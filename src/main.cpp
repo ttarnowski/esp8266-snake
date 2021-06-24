@@ -32,8 +32,8 @@ struct Snake {
   enum Direction { Up = 1, Left = 2, Right = 3, Down = 4 };
 
   Snake(uint8_t w, uint8_t h) {
-    head_.x = w / 2 + 3;
-    tail_.x = w / 2 - 3;
+    head_.x = w / 2 + 10;
+    tail_.x = w / 2 - 10;
 
     tail_.y = head_.y = h / 2;
 
@@ -70,47 +70,82 @@ struct Game {
     }
 
     field_[s.get_head().x][s.get_head().y] = Head;
+
+    for (uint8_t x = 0; x < WIDTH; x++) {
+      field_[x][0] = field_[x][HEIGHT - 1] = Pixel::Wall;
+    }
+
+    for (uint8_t y = 0; y < HEIGHT; y++) {
+      field_[0][y] = field_[WIDTH - 1][y] = Pixel::Wall;
+    }
+
+    is_over_ = false;
   }
 
-  enum Pixel { Empty = 0, Up = 1, Left = 2, Right = 3, Down = 4, Head = 5 };
+  enum Pixel {
+    Empty = 0,
+    Up = 1,
+    Left = 2,
+    Right = 3,
+    Down = 4,
+    Head = 5,
+    Wall = 6
+  };
 
   void move_snake() {
     this->move_head();
     this->move_tail();
   }
 
+  bool is_over() { return is_over_; }
+
+  void field_for_each(std::function<void(uint8_t, uint8_t, Pixel)> fn) {
+    for (uint8_t x = 0; x < WIDTH; x++) {
+      for (uint8_t y = 0; y < HEIGHT; y++) {
+        fn(x, y, (Pixel)field_[x][y]);
+      }
+    }
+  }
+
 private:
   void move_head() {
+    uint8_t new_x = snake_.get_head().x;
+    uint8_t new_y = snake_.get_head().y;
+    Pixel p;
+
     switch (snake_.get_direction()) {
     case Snake::Direction::Up:
-      field_[snake_.get_head().x][snake_.get_head().y] = Pixel::Up;
-      field_[snake_.get_head().x][snake_.get_head().y - 1] = Pixel::Head;
-
-      snake_.head_.y--;
+      new_y--;
+      p = Pixel::Up;
       break;
 
     case Snake::Direction::Left:
-      field_[snake_.get_head().x][snake_.get_head().y] = Pixel::Left;
-      field_[snake_.get_head().x - 1][snake_.get_head().y] = Pixel::Head;
-
-      snake_.head_.x--;
+      p = Pixel::Left;
+      new_x--;
       break;
 
     case Snake::Direction::Right:
-      field_[snake_.get_head().x][snake_.get_head().y] = Pixel::Right;
-      field_[snake_.get_head().x + 1][snake_.get_head().y] = Pixel::Head;
-
-      snake_.head_.x++;
+      p = Pixel::Right;
+      new_x++;
       break;
 
     // Down
     default:
-      field_[snake_.get_head().x][snake_.get_head().y] = Pixel::Down;
-      field_[snake_.get_head().x][snake_.get_head().y + 1] = Pixel::Head;
-
-      snake_.head_.y++;
+      p = Pixel::Down;
+      new_y++;
       break;
     }
+
+    if (field_[new_x][new_y] != Pixel::Empty) {
+      is_over_ = true;
+      return;
+    }
+
+    field_[snake_.get_head().x][snake_.get_head().y] = p;
+    field_[new_x][new_y] = Pixel::Head;
+
+    snake_.head_.x = new_x;
+    snake_.head_.y = new_y;
   }
 
   void move_tail() {
@@ -141,6 +176,7 @@ private:
 
   Snake &snake_;
   uint8_t field_[WIDTH][HEIGHT];
+  bool is_over_;
 };
 
 Snake snake(WIDTH, HEIGHT);
@@ -160,14 +196,26 @@ void setup() {
   tft.setRotation(3);
 
   // draw snake
-  for (uint8_t x = snake.get_tail().x; x <= snake.get_head().x; x++) {
-    tft.drawPixel(x, snake.get_head().y, ST7735_WHITE);
-  }
+  game.field_for_each([](uint8_t x, uint8_t y, Game::Pixel p) {
+    if (p != Game::Pixel::Empty) {
+      tft.drawPixel(x, y, ST7735_WHITE);
+    }
+  });
 }
 
 bool is_button_pressed(uint8_t pin) { return digitalRead(pin) == LOW; }
 
 void loop() {
+  if (game.is_over()) {
+    tft.fillScreen(ST7735_BLACK);
+    tft.setCursor(0, HEIGHT / 3);
+    tft.setTextColor(ST7735_RED);
+    tft.setTextSize(2);
+    tft.print("Game Over");
+    delay(3000);
+    ESP.restart();
+  }
+
   if (is_button_pressed(UP_BUTTON)) {
     snake.set_direction(Snake::Direction::Up);
   }
