@@ -65,19 +65,9 @@ private:
 
 struct Game {
   Game(Snake &s) : snake_(s) {
-    for (uint8_t x = s.get_tail().x; x < s.get_head().x; x++) {
-      field_[x][s.get_head().y] = Right;
-    }
-
-    field_[s.get_head().x][s.get_head().y] = Head;
-
-    for (uint8_t x = 0; x < WIDTH; x++) {
-      field_[x][0] = field_[x][HEIGHT - 1] = Pixel::Wall;
-    }
-
-    for (uint8_t y = 0; y < HEIGHT; y++) {
-      field_[0][y] = field_[WIDTH - 1][y] = Pixel::Wall;
-    }
+    this->add_snake();
+    this->add_wall();
+    this->add_food();
 
     is_over_ = false;
   }
@@ -89,7 +79,28 @@ struct Game {
     Right = 3,
     Down = 4,
     Head = 5,
-    Wall = 6
+    Wall = 6,
+    Food = 7
+  };
+
+  struct FieldElement {
+    FieldElement() {
+      pixel_ = Pixel::Empty;
+      has_food_ = false;
+    }
+
+    FieldElement(Pixel pixel, bool has_food = false) {
+      pixel_ = pixel;
+      has_food_ = has_food;
+    }
+
+    Pixel get_pixel() { return (Pixel)pixel_; }
+
+    bool has_food() { return has_food_; }
+
+  private:
+    uint8_t pixel_ : 4;
+    bool has_food_ : 1;
   };
 
   void move_snake() {
@@ -102,12 +113,43 @@ struct Game {
   void field_for_each(std::function<void(uint8_t, uint8_t, Pixel)> fn) {
     for (uint8_t x = 0; x < WIDTH; x++) {
       for (uint8_t y = 0; y < HEIGHT; y++) {
-        fn(x, y, (Pixel)field_[x][y]);
+        fn(x, y, field_[x][y].get_pixel());
       }
     }
   }
 
 private:
+  void add_snake() {
+    for (uint8_t x = snake_.get_tail().x; x < snake_.get_head().x; x++) {
+      field_[x][snake_.get_head().y] = FieldElement(Pixel::Right);
+    }
+
+    field_[snake_.get_head().x][snake_.get_head().y] =
+        FieldElement(Pixel::Head);
+  }
+
+  void add_wall() {
+    for (uint8_t x = 0; x < WIDTH; x++) {
+      field_[x][0] = field_[x][HEIGHT - 1] = FieldElement(Pixel::Wall);
+    }
+
+    for (uint8_t y = 0; y < HEIGHT; y++) {
+      field_[0][y] = field_[WIDTH - 1][y] = FieldElement(Pixel::Wall);
+    }
+  }
+
+  void add_food() {
+    uint8_t x = random(WIDTH);
+    uint8_t y = random(HEIGHT);
+
+    if (field_[x][y].get_pixel() == Pixel::Empty) {
+      field_[x][y] = FieldElement(Pixel::Food);
+      return;
+    }
+
+    this->add_food();
+  }
+
   void move_head() {
     uint8_t new_x = snake_.get_head().x;
     uint8_t new_y = snake_.get_head().y;
@@ -136,13 +178,14 @@ private:
       break;
     }
 
-    if (field_[new_x][new_y] != Pixel::Empty) {
+    // collision check
+    if (field_[new_x][new_y].get_pixel() != Pixel::Empty) {
       is_over_ = true;
       return;
     }
 
-    field_[snake_.get_head().x][snake_.get_head().y] = p;
-    field_[new_x][new_y] = Pixel::Head;
+    field_[snake_.get_head().x][snake_.get_head().y] = FieldElement(p);
+    field_[new_x][new_y] = FieldElement(Pixel::Head);
 
     snake_.head_.x = new_x;
     snake_.head_.y = new_y;
@@ -152,7 +195,7 @@ private:
     uint8_t tail_x = snake_.get_tail().x;
     uint8_t tail_y = snake_.get_tail().y;
 
-    switch (field_[tail_x][tail_y]) {
+    switch (field_[tail_x][tail_y].get_pixel()) {
     case Pixel::Right:
       snake_.tail_.x++;
       break;
@@ -171,11 +214,11 @@ private:
       break;
     }
 
-    field_[tail_x][tail_y] = Pixel::Empty;
+    field_[tail_x][tail_y] = FieldElement(Pixel::Empty);
   }
 
   Snake &snake_;
-  uint8_t field_[WIDTH][HEIGHT];
+  FieldElement field_[WIDTH][HEIGHT];
   bool is_over_;
 };
 
