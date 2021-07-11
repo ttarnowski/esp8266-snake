@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <Wire.h>
+#include <functional>
 
 #define TFT_CS D8
 #define TFT_RST D6
@@ -64,12 +65,10 @@ private:
 };
 
 struct Game {
-  Game(Snake &s) : snake_(s) {
-    this->add_snake();
-    this->add_wall();
-    this->add_food();
-
+  Game(Snake &s, std::function<void(uint8_t, uint8_t)> on_food_added = nullptr)
+      : snake_(s) {
     is_over_ = false;
+    on_food_added_ = on_food_added;
   }
 
   enum Pixel {
@@ -103,8 +102,23 @@ struct Game {
     bool has_food_ : 1;
   };
 
+  void start() {
+    this->add_snake();
+    this->add_wall();
+    this->add_food();
+  }
+
   void move_snake() {
     this->move_head();
+
+    FieldElement element = field_[snake_.get_tail().x][snake_.get_tail().y];
+
+    if (element.has_food()) {
+      field_[snake_.get_tail().x][snake_.get_tail().y] =
+          FieldElement(element.get_pixel());
+      return;
+    }
+
     this->move_tail();
   }
 
@@ -143,6 +157,9 @@ private:
     uint8_t y = random(HEIGHT);
 
     if (field_[x][y].get_pixel() == Pixel::Empty) {
+      if (on_food_added_ != nullptr) {
+        on_food_added_(x, y);
+      }
       field_[x][y] = FieldElement(Pixel::Food);
       return;
     }
@@ -179,13 +196,21 @@ private:
     }
 
     // collision check
-    if (field_[new_x][new_y].get_pixel() != Pixel::Empty) {
+    if (field_[new_x][new_y].get_pixel() != Pixel::Empty &&
+        field_[new_x][new_y].get_pixel() != Pixel::Food) {
       is_over_ = true;
       return;
     }
 
-    field_[snake_.get_head().x][snake_.get_head().y] = FieldElement(p);
-    field_[new_x][new_y] = FieldElement(Pixel::Head);
+    field_[snake_.get_head().x][snake_.get_head().y] = FieldElement(
+        p, field_[snake_.get_head().x][snake_.get_head().y].has_food());
+
+    bool has_eaten = field_[new_x][new_y].get_pixel() == Pixel::Food;
+    field_[new_x][new_y] = FieldElement(Pixel::Head, has_eaten);
+
+    if (has_eaten) {
+      this->add_food();
+    }
 
     snake_.head_.x = new_x;
     snake_.head_.y = new_y;
@@ -220,10 +245,12 @@ private:
   Snake &snake_;
   FieldElement field_[WIDTH][HEIGHT];
   bool is_over_;
+  std::function<void(uint8_t, uint8_t)> on_food_added_;
 };
 
 Snake snake(WIDTH, HEIGHT);
-Game game(snake);
+Game game(snake,
+          [](uint8_t x, uint8_t y) { tft.drawPixel(x, y, ST7735_GREEN); });
 
 void setup() {
   Serial.begin(115200);
@@ -238,9 +265,10 @@ void setup() {
   tft.fillScreen(ST77XX_BLACK);
   tft.setRotation(3);
 
+  game.start();
   // draw snake
   game.field_for_each([](uint8_t x, uint8_t y, Game::Pixel p) {
-    if (p != Game::Pixel::Empty) {
+    if (p != Game::Pixel::Empty && p != Game::Pixel::Food) {
       tft.drawPixel(x, y, ST7735_WHITE);
     }
   });
