@@ -15,7 +15,8 @@
 #define UP_BUTTON D4
 
 #define WIDTH 160
-#define HEIGHT 128
+#define HEIGHT 120
+#define HEIGHT_SHIFT 8
 
 #define SPEED 75
 
@@ -248,9 +249,19 @@ private:
   std::function<void(uint8_t, uint8_t)> on_food_added_;
 };
 
+int score = -1;
+
 Snake snake(WIDTH, HEIGHT);
-Game game(snake,
-          [](uint8_t x, uint8_t y) { tft.drawPixel(x, y, ST7735_GREEN); });
+Game game(snake, [](uint8_t x, uint8_t y) {
+  tft.drawPixel(x, y + HEIGHT_SHIFT, ST7735_GREEN);
+  score++;
+
+  tft.fillRect(0, 0, WIDTH, HEIGHT_SHIFT, ST7735_BLACK);
+  tft.setCursor(0, 0);
+  tft.setTextSize(1);
+  tft.setTextColor(ST7735_WHITE);
+  tft.print(score);
+});
 
 void setup() {
   Serial.begin(115200);
@@ -269,7 +280,7 @@ void setup() {
   // draw snake
   game.field_for_each([](uint8_t x, uint8_t y, Game::Pixel p) {
     if (p != Game::Pixel::Empty && p != Game::Pixel::Food) {
-      tft.drawPixel(x, y, ST7735_WHITE);
+      tft.drawPixel(x, y + HEIGHT_SHIFT, ST7735_WHITE);
     }
   });
 }
@@ -283,6 +294,14 @@ void loop() {
     tft.setTextColor(ST7735_RED);
     tft.setTextSize(2);
     tft.print("Game Over");
+
+    tft.setCursor(0, HEIGHT / 3 + 24);
+    tft.setTextSize(1);
+
+    char score_text[32];
+    sprintf(score_text, "Your score: %d", score);
+    tft.print(score_text);
+
     delay(3000);
     ESP.restart();
   }
@@ -303,9 +322,11 @@ void loop() {
     snake.set_direction(Snake::Direction::Right);
   }
 
-  tft.drawPixel(snake.get_tail().x, snake.get_tail().y, ST7735_BLACK);
+  tft.drawPixel(snake.get_tail().x, snake.get_tail().y + HEIGHT_SHIFT,
+                ST7735_BLACK);
   game.move_snake();
-  tft.drawPixel(snake.get_head().x, snake.get_head().y, ST7735_WHITE);
+  tft.drawPixel(snake.get_head().x, snake.get_head().y + HEIGHT_SHIFT,
+                ST7735_WHITE);
 
   delay(SPEED);
 }
